@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "description": "Thư mục chứa dữ liệu từ điển Hán-Việt, dữ liệu HSK và các file JSON tĩnh.",
+  "files": {
+    "hsk1_words.json": "Từ vựng HSK cấp 1 (150 từ)",
+    "hsk2_words.json": "Từ vựng HSK cấp 2 (150 từ)",
+    "hsk3_words.json": "Từ vựng HSK cấp 3 (300 từ)",
+    "hsk4_words.json": "Từ vựng HSK cấp 4 (600 từ)",
+    "hsk5_words.json": "Từ vựng HSK cấp 5 (1300 từ)",
+    "hsk6_words.json": "Từ vựng HSK cấp 6 (2500 từ)"
+  },
+  "note": "Thêm file dữ liệu từ vựng vào thư mục này và khai báo trong pubspec.yaml"
+}

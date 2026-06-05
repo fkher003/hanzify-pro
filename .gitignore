@@ -1,0 +1,108 @@
+# ═══════════════════════════════════════════════════════════════
+# HanzifyPro .gitignore — Bảo mật tuyệt đối, không commit API Key
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Miscellaneous ───────────────────────────────────────────────
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# ─── IDE — IntelliJ / Android Studio ────────────────────────────
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# ─── IDE — VS Code ───────────────────────────────────────────────
+# Bỏ chặn .vscode/ để bảo vệ thông tin launch config local
+.vscode/
+
+# ─── BẢO MẬT: API Keys & Environment Variables ──────────────────
+# TUYỆT ĐỐI KHÔNG commit các file chứa secret/key
+.env
+.env.*
+.env.local
+.env.development
+.env.staging
+.env.production
+*.env
+
+# Dart-define key files (nếu lưu key vào file thay vì CLI)
+dart-define.json
+dart-define*.json
+*.dart-define
+env.json
+secrets.json
+local.properties
+
+# ─── BẢO MẬT: Firebase Config (REPO PUBLIC) ─────────────────────
+# QUAN TRỌNG: Các file dưới đây chứa Firebase API key thực tế.
+# Với repo PUBLIC, bắt buộc phải thêm vào .gitignore.
+# Dùng CI/CD secret (GitHub Actions) để inject khi build.
+google-services.json
+ios/Runner/GoogleService-Info.plist
+macos/Runner/GoogleService-Info.plist
+ios/firebase_app_id_file.json
+
+# firebase_options.dart chứa API key thực — dùng template thay thế
+lib/firebase_options.dart
+
+# Firebase debug log (không cần thiết trong repo)
+firebase-debug.log
+firebase-debug.*.log
+.firebase/
+
+# ─── Flutter / Dart / Pub ────────────────────────────────────────
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Generated files (nếu dùng build_runner)
+*.g.dart
+*.freezed.dart
+*.gr.dart
+*.config.dart
+
+# ─── Symbolication & Obfuscation ─────────────────────────────────
+app.*.symbols
+app.*.map.json
+
+# ─── Android build artifacts ─────────────────────────────────────
+/android/app/debug
+/android/app/profile
+/android/app/release
+android/.gradle/
+android/captures/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+
+# ─── iOS ─────────────────────────────────────────────────────────
+ios/.bundle/
+ios/Pods/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# ─── macOS ───────────────────────────────────────────────────────
+macos/.bundle/
+macos/Pods/
+
+# ─── Hệ điều hành ───────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
