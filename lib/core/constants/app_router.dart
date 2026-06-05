@@ -2,35 +2,64 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/constants/app_colors.dart';
+import '../../core/models/word.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
+import '../../features/chat/presentation/screens/chat_screen.dart';
+import '../../features/flashcard/presentation/screens/flashcard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
+import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/stroke/presentation/stroke_screen.dart';
+import '../../shared/widgets/main_scaffold.dart';
 
-// ─── Tên routes (constants) ──────────────────────────────────────────────
+// ─── Đường dẫn Route (constants) ─────────────────────────────────────────────
 
-/// Đường dẫn route cho màn hình Login
+/// Route auth: đăng nhập
 const String kRouteLogin = '/login';
 
-/// Đường dẫn route cho màn hình Register
+/// Route auth: đăng ký
 const String kRouteRegister = '/register';
 
-/// Đường dẫn route cho màn hình Home
+/// Route chính app — root của StatefulShellRoute
 const String kRouteHome = '/home';
 
-// ─── Router Provider ─────────────────────────────────────────────────────
+/// Route Flashcard tab
+const String kRouteFlashcard = '/flashcard';
 
-/// Provider cung cấp GoRouter cho toàn bộ ứng dụng.
-/// Tích hợp với [authProvider] để redirect tự động:
-/// - Chưa đăng nhập → /login
-/// - Đã đăng nhập mà vào /login → /home
+/// Route AI Chat tab
+const String kRouteChat = '/chat';
+
+/// Route Hồ sơ tab
+const String kRouteProfile = '/profile';
+
+// kRouteStroke được định nghĩa trong stroke_screen.dart: '/stroke'
+
+// ─── Router Provider ──────────────────────────────────────────────────────────
+
+/// Provider cung cấp GoRouter toàn ứng dụng.
+///
+/// Kiến trúc route:
+/// ```
+/// /login            → LoginScreen
+/// /register         → RegisterScreen
+/// StatefulShellRoute (MainScaffold)
+///   /home           → HomeScreen       [tab 0]
+///   /flashcard      → FlashcardScreen  [tab 1]
+///   /chat           → ChatScreen       [tab 2]
+///   /profile        → ProfileScreen    [tab 3]
+/// ```
+///
+/// Auth redirect: Chưa đăng nhập → /login, Đã đăng nhập → /home.
+/// Giữ nguyên luồng Firebase Auth đã có.
 final appRouterProvider = Provider<GoRouter>((ref) {
-  // Lắng nghe auth state để redirect khi state thay đổi
+  // Lắng nghe auth state để trigger redirect khi đăng nhập/đăng xuất
   final authNotifier = ValueNotifier<AsyncValue<AuthState>>(
     ref.read(authProvider),
   );
 
-  // Cập nhật notifier khi auth state thay đổi
+  // Cập nhật notifier mỗi khi auth state thay đổi
   ref.listen<AsyncValue<AuthState>>(authProvider, (_, next) {
     authNotifier.value = next;
   });
@@ -39,36 +68,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: kRouteLogin,
     debugLogDiagnostics: false,
 
-    // Lắng nghe thay đổi để router refresh khi auth state thay đổi
+    // Router tự refresh khi auth state thay đổi
     refreshListenable: authNotifier,
 
-    // Redirect logic: kiểm tra auth state và điều hướng phù hợp
+    // ── Redirect Logic ────────────────────────────────────────────────────
     redirect: (BuildContext context, GoRouterState state) {
       final authAsync = authNotifier.value;
 
-      // Đang tải auth state — chưa redirect
+      // Đang tải — chưa redirect
       if (authAsync.isLoading) return null;
 
       final authData = authAsync.valueOrNull;
       final isAuthenticated = authData?.status == AuthStatus.authenticated;
+
+      // Các route auth không cần bảo vệ
       final isOnAuthRoute =
           state.matchedLocation == kRouteLogin ||
           state.matchedLocation == kRouteRegister;
 
-      // Chưa đăng nhập và không ở trang auth → về login
+      // Chưa đăng nhập → về login
       if (!isAuthenticated && !isOnAuthRoute) return kRouteLogin;
 
-      // Đã đăng nhập nhưng đang ở trang login → về home
+      // Đã đăng nhập mà vào login → về home
       if (isAuthenticated && state.matchedLocation == kRouteLogin) {
         return kRouteHome;
       }
 
-      // Không cần redirect
       return null;
     },
 
+    // ── Routes ────────────────────────────────────────────────────────────
     routes: [
-      // ── Màn hình Đăng nhập ──────────────────────────────────────────
+      // ── Đăng nhập ───────────────────────────────────────────────────────
       GoRoute(
         path: kRouteLogin,
         name: 'login',
@@ -79,7 +110,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ── Màn hình Đăng ký ────────────────────────────────────────────
+      // ── Đăng ký ─────────────────────────────────────────────────────────
       GoRoute(
         path: kRouteRegister,
         name: 'register',
@@ -90,21 +121,88 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ── Màn hình Home ────────────────────────────────────────────────
+      // ── Màn hình luyện viết chữ Hán ─────────────────────────────────────
+      // Đặt NGOÀI StatefulShellRoute → push lên trên toàn màn hình, không có BottomNav.
       GoRoute(
-        path: kRouteHome,
-        name: 'home',
-        pageBuilder: (context, state) => CustomTransitionPage(
-          key: state.pageKey,
-          child: const HomeScreen(),
-          transitionsBuilder: _fadeTransition,
-        ),
+        path: kRouteStroke,
+        name: 'stroke',
+        pageBuilder: (context, state) {
+          // Nhận Word object được truyền qua context.push(extra: word)
+          final word = state.extra as Word;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: StrokeScreen(word: word),
+            transitionsBuilder: _slideUpTransition,
+          );
+        },
+      ),
+
+      // ── Shell Route — Main App với Bottom Navigation ────────────────────
+      // StatefulShellRoute giữ nguyên state (không rebuild) khi chuyển tab.
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) {
+          // MainScaffold nhận navigationShell để quản lý bottom nav + tab switching
+          return MainScaffold(navigationShell: navigationShell);
+        },
+        branches: [
+          // ── Branch 0: Trang chủ ─────────────────────────────────────────
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRouteHome,
+                name: 'home',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: HomeScreen(),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Branch 1: Flashcard ──────────────────────────────────────────
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRouteFlashcard,
+                name: 'flashcard',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: FlashcardScreen(),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Branch 2: AI Chat ────────────────────────────────────────────
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRouteChat,
+                name: 'chat',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: ChatScreen(),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Branch 3: Hồ sơ ─────────────────────────────────────────────
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: kRouteProfile,
+                name: 'profile',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: ProfileScreen(),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     ],
 
-    // Xử lý route không tồn tại
+    // Route không tồn tại → hiển thị error screen
     errorBuilder: (context, state) => Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
+      backgroundColor: AppColors.background,
       body: Center(
         child: Text(
           'Không tìm thấy trang: ${state.uri}',
@@ -115,9 +213,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
-// ─── Transition Builders ──────────────────────────────────────────────────
 
-/// Hiệu ứng chuyển trang Fade
+// ─── Transition Builders ──────────────────────────────────────────────────────
+
+/// Hiệu ứng Fade — dùng cho Login/Home
 Widget _fadeTransition(
   BuildContext context,
   Animation<double> animation,
@@ -127,7 +226,7 @@ Widget _fadeTransition(
   return FadeTransition(opacity: animation, child: child);
 }
 
-/// Hiệu ứng chuyển trang Slide Up (cho màn hình đăng ký)
+/// Hiệu ứng Slide Up — dùng cho Register
 Widget _slideUpTransition(
   BuildContext context,
   Animation<double> animation,
