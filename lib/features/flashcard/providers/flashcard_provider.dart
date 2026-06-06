@@ -2,11 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/flashcard.dart';
 import '../../../core/models/word.dart';
+import '../../../core/services/hive_service.dart';
 import '../../../core/utils/srs_algorithm.dart';
 
 // ─── Models State ─────────────────────────────────────────────────────────
 
-/// Data class dùng để truyền cặp Word - Flashcard xuống UI
+/// Cặp Word + FlashCard để truyền xuống UI.
 class FlashcardItem {
   final Word word;
   final FlashCard card;
@@ -14,7 +15,7 @@ class FlashcardItem {
   FlashcardItem({required this.word, required this.card});
 }
 
-/// State của màn hình Flashcard
+/// State của màn hình Flashcard.
 class FlashcardState {
   final List<FlashcardItem> deck;
   final int currentIndex;
@@ -24,10 +25,10 @@ class FlashcardState {
     this.currentIndex = 0,
   });
 
-  /// Kiểm tra xem đã học hết danh sách chưa
+  /// Kiểm tra đã học hết chưa.
   bool get isFinished => currentIndex >= deck.length;
 
-  /// Lấy thẻ hiện tại
+  /// Thẻ hiện tại.
   FlashcardItem? get currentItem => isFinished ? null : deck[currentIndex];
 
   FlashcardState copyWith({
@@ -41,98 +42,104 @@ class FlashcardState {
   }
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────
-
-final _mockWords = [
-  Word(
-    id: 'w1',
-    hanzi: '学习',
-    pinyin: 'xuéxí',
-    meaning: 'học tập, nghiên cứu',
-    example: '我在学习中文。',
-    examplePinyin: 'Wǒ zài xuéxí zhōngwén.',
-    hskLevel: 1,
-  ),
-  Word(
-    id: 'w2',
-    hanzi: '语言',
-    pinyin: 'yǔyán',
-    meaning: 'ngôn ngữ',
-    example: '语言是沟通的工具。',
-    examplePinyin: 'Yǔyán shì gōutōng de gōngjù.',
-    hskLevel: 2,
-  ),
-  Word(
-    id: 'w3',
-    hanzi: '汉字',
-    pinyin: 'hànzì',
-    meaning: 'chữ Hán',
-    example: '写汉字很难。',
-    examplePinyin: 'Xiě hànzì hěn nán.',
-    hskLevel: 1,
-  ),
-];
-
-final _mockCards = _mockWords.map((w) => FlashCard.newCard(wordId: w.id)).toList();
-
-final _initialDeck = List.generate(
-  _mockWords.length,
-  (i) => FlashcardItem(word: _mockWords[i], card: _mockCards[i]),
-);
-
 // ─── Notifier ─────────────────────────────────────────────────────────────
 
-/// Quản lý trạng thái danh sách Flashcard và xử lý thuật toán SM-2.
+/// Quản lý vòng đời Flashcard với Hive persistence + thuật toán SM-2.
+///
+/// Luồng dữ liệu:
+/// 1. `build()`: đọc FlashCard từ Hive, join với Word data → tạo deck hôm nay
+/// 2. `answerCard()`: gọi SM-2, lưu kết quả xuống Hive, chuyển thẻ tiếp theo
+/// 3. `resetDeck()`: làm mới lại danh sách để ôn tập lại
 class FlashcardNotifier extends Notifier<FlashcardState> {
+  /// Lấy HiveService từ Riverpod container.
+  HiveService get _hive => ref.read(hiveServiceProvider);
+
   @override
   FlashcardState build() {
-    // Khởi tạo state với dữ liệu mock
-    return FlashcardState(deck: _initialDeck);
+    // Đọc dữ liệu từ Hive và xây dựng deck
+    return _buildDeckFromHive();
   }
 
-  /// Gọi khi người dùng nhấn nút Đúng hoặc Sai.
-  /// [isCorrect]: true nếu nhấn "Đúng", false nếu nhấn "Sai".
-  void answerCard(bool isCorrect) {
+  // ─── Đọc từ Hive ─────────────────────────────────────────────────────────
+
+  /// Xây dựng danh sách thẻ cần học hôm nay từ Hive.
+  FlashcardState _buildDeckFromHive() {
+    final allCards = _hive.getDueFlashCards();
+    final allWords = _hive.getAllWords();
+
+    // Tạo map word để lookup O(1)
+    final wordMap = {for (final w in allWords) w.id: w};
+
+    // Join FlashCard với Word tương ứng
+    final deck = allCards
+        .where((card) => wordMap.containsKey(card.wordId))
+        .map((card) => FlashcardItem(word: wordMap[card.wordId]!, card: card))
+        .toList();
+
+    // Nếu không có thẻ nào due today (ví dụ: mở app lần đầu chưa seed),
+    // lấy tất cả thẻ để không bị màn hình trắng
+    if (deck.isEmpty) {
+      final allDeck = _hive.getAllFlashCards()
+          .where((card) => wordMap.containsKey(card.wordId))
+          .map((card) => FlashcardItem(word: wordMap[card.wordId]!, card: card))
+          .toList();
+      return FlashcardState(deck: allDeck);
+    }
+
+    return FlashcardState(deck: deck);
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  /// Xử lý khi người dùng nhấn Đúng hoặc Sai.
+  ///
+  /// 1. Tính qualityScore từ isCorrect (Đúng → 4, Sai → 1)
+  /// 2. Gọi SrsAlgorithm.processReview() để cập nhật SM-2
+  /// 3. Lưu FlashCard đã cập nhật xuống Hive
+  /// 4. Cập nhật streak
+  /// 5. Chuyển sang thẻ tiếp theo
+  Future<void> answerCard(bool isCorrect) async {
     if (state.isFinished) return;
 
     final currentItem = state.currentItem!;
-    
-    // Quy đổi nút bấm ra chất lượng (qualityScore) cho thuật toán SM-2
-    // Đúng -> điểm 4 (tốt), Sai -> điểm 1 (nhớ ra khi thấy đáp án)
+
+    // Quy đổi nút bấm ra qualityScore (theo thang SM-2: 0–5)
     final score = isCorrect ? 4 : 1;
 
-    // Cập nhật flashcard thông qua SM-2
+    // Cập nhật SM-2
     final updatedCard = SrsAlgorithm.processReview(
       card: currentItem.card,
       qualityScore: score,
     );
 
-    // Tạo item mới với card đã cập nhật
-    final updatedItem = FlashcardItem(
+    // ── Persist xuống Hive ──────────────────────────────────────────────────
+    await _hive.saveFlashCard(updatedCard);
+
+    // Cập nhật streak mỗi khi có hoạt động học tập
+    await _hive.updateStreak();
+
+    // ── Cập nhật state in-memory ────────────────────────────────────────────
+    final newDeck = List<FlashcardItem>.from(state.deck);
+    newDeck[state.currentIndex] = FlashcardItem(
       word: currentItem.word,
       card: updatedCard,
     );
 
-    // Cập nhật deck
-    final newDeck = List<FlashcardItem>.from(state.deck);
-    newDeck[state.currentIndex] = updatedItem;
-
-    // TODO: Ở bước tiếp theo (khi có Backend/DB), gọi hàm lưu updatedCard vào Hive hoặc Firestore.
-
-    // Chuyển sang thẻ tiếp theo
     state = state.copyWith(
       deck: newDeck,
       currentIndex: state.currentIndex + 1,
     );
   }
 
-  /// Reset lại tiến trình bài học (dùng khi xem xong màn hình hoàn thành)
+  /// Reset để ôn tập lại từ đầu.
+  /// Đọc lại từ Hive để lấy state mới nhất (vd: sau khi nhiều thẻ đã update).
   void resetDeck() {
-    state = state.copyWith(currentIndex: 0);
+    state = _buildDeckFromHive();
   }
 }
 
 /// Provider phơi bày FlashcardNotifier ra toàn app.
-final flashcardProvider = NotifierProvider<FlashcardNotifier, FlashcardState>(() {
+final flashcardProvider =
+    NotifierProvider<FlashcardNotifier, FlashcardState>(() {
   return FlashcardNotifier();
 });

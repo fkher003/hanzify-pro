@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/models/word.dart';
+import '../../core/models/chat_models.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
+import '../../features/chat/presentation/screens/scenario_screen.dart';
 import '../../features/flashcard/presentation/screens/flashcard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
@@ -28,8 +30,11 @@ const String kRouteHome = '/home';
 /// Route Flashcard tab
 const String kRouteFlashcard = '/flashcard';
 
-/// Route AI Chat tab
+/// Route AI Chat tab (Scenario Picker)
 const String kRouteChat = '/chat';
+
+/// Route Chat conversation
+const String kRouteConversation = '/chat/conversation';
 
 /// Route Hồ sơ tab
 const String kRouteProfile = '/profile';
@@ -137,6 +142,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
 
+      // ── Màn hình AI Chat Conversation ─────────────────────────────────────
+      GoRoute(
+        path: kRouteConversation,
+        name: 'conversation',
+        pageBuilder: (context, state) {
+          final scenario = state.extra as ChatScenario;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: ChatScreen(scenario: scenario),
+            transitionsBuilder: _slideUpTransition,
+          );
+        },
+      ),
+
       // ── Shell Route — Main App với Bottom Navigation ────────────────────
       // StatefulShellRoute giữ nguyên state (không rebuild) khi chuyển tab.
       StatefulShellRoute.indexedStack(
@@ -176,9 +195,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: kRouteChat,
-                name: 'chat',
+                name: 'chat_scenario',
                 pageBuilder: (context, state) => const NoTransitionPage(
-                  child: ChatScreen(),
+                  child: ScenarioScreen(),
                 ),
               ),
             ],

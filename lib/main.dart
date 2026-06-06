@@ -3,18 +3,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'core/constants/app_router.dart';
+import 'core/services/hive_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Khởi tạo Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Khởi tạo Hive: đăng ký TypeAdapter và mở tất cả box
+  await HiveService.initialize();
+
+  // Nạp dữ liệu mẫu nếu box từ vựng còn rỗng (lần đầu cài app)
+  await HiveService().seedSampleWordsIfEmpty();
+
   runApp(
     const ProviderScope(
       child: MyApp(),
     ),
   );
 }
+
 
 /// Widget gốc của ứng dụng HanzifyPro.
 /// Kết nối với GoRouter thông qua [appRouterProvider].

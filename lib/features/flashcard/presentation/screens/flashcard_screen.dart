@@ -58,9 +58,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
   /// Xử lý khi chọn Đúng / Sai
-  void _answerCard(bool isCorrect) {
-    // 1. Cập nhật state qua Riverpod
-    ref.read(flashcardProvider.notifier).answerCard(isCorrect);
+  Future<void> _answerCard(bool isCorrect) async {
+    // 1. Cập nhật state + lưu Hive qua Riverpod (async)
+    await ref.read(flashcardProvider.notifier).answerCard(isCorrect);
     
     // 2. Reset thẻ về mặt trước (lập tức, không có animation)
     if (!mounted) return;

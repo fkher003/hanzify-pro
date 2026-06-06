@@ -1,25 +1,35 @@
+import 'package:hive_flutter/hive_flutter.dart';
+
+part 'flashcard.g.dart';
+
 /// Model đại diện cho một Flashcard trong hệ thống ôn tập SRS (Spaced Repetition System).
 /// Dựa trên thuật toán SM-2 để tính toán lịch ôn tập tối ưu.
-class FlashCard {
+/// Sử dụng Hive TypeAdapter (typeId: 1) để lưu trữ offline.
+@HiveType(typeId: 1)
+class FlashCard extends HiveObject {
   /// ID của từ vựng liên kết với flashcard này (khóa ngoại đến Word.id)
+  @HiveField(0)
   final String wordId;
 
   /// Hệ số dễ dàng — đánh giá mức độ dễ nhớ của thẻ (mặc định: 2.5).
   /// Giá trị tối thiểu là 1.3, không có giới hạn trên.
+  @HiveField(1)
   final double easinessFactor;
 
   /// Khoảng thời gian (số ngày) đến lần ôn tập tiếp theo.
-  /// Lần đầu = 1 ngày, lần hai = 6 ngày, sau đó tăng theo easinessFactor.
+  @HiveField(2)
   final int interval;
 
-  /// Số lần ôn tập thành công liên tiếp (không reset nếu sai).
+  /// Số lần ôn tập thành công liên tiếp.
+  @HiveField(3)
   final int repetitions;
 
-  /// Ngày ôn tập tiếp theo (so sánh với ngày hiện tại để xác định thẻ cần ôn).
+  /// Ngày ôn tập tiếp theo.
+  @HiveField(4)
   final DateTime nextReviewDate;
 
   /// Khởi tạo FlashCard với thông tin tiến trình học tập.
-  const FlashCard({
+  FlashCard({
     required this.wordId,
     this.easinessFactor = 2.5,
     this.interval = 0,
@@ -28,7 +38,6 @@ class FlashCard {
   });
 
   /// Tạo FlashCard mới cho một từ, chưa từng được ôn tập.
-  /// Lần ôn tập đầu tiên sẽ là ngay hôm nay.
   factory FlashCard.newCard({required String wordId}) {
     return FlashCard(
       wordId: wordId,
@@ -39,7 +48,7 @@ class FlashCard {
     );
   }
 
-  /// Tạo FlashCard từ Map (dùng khi đọc từ Hive hoặc Firestore).
+  /// Tạo FlashCard từ Map (dùng khi đọc từ Firestore).
   factory FlashCard.fromMap(Map<String, dynamic> map) {
     return FlashCard(
       wordId: map['wordId'] as String,
@@ -50,7 +59,7 @@ class FlashCard {
     );
   }
 
-  /// Chuyển FlashCard thành Map để lưu vào Hive hoặc Firestore.
+  /// Chuyển FlashCard thành Map để lưu vào Firestore.
   Map<String, dynamic> toMap() {
     return {
       'wordId': wordId,

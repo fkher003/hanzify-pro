@@ -1,29 +1,42 @@
+import 'package:hive_flutter/hive_flutter.dart';
+
+part 'word.g.dart';
+
 /// Model đại diện cho một từ vựng Hán-Việt trong từ điển.
 /// Chứa đầy đủ thông tin ngôn ngữ cần thiết để học và ôn tập.
-class Word {
+/// Sử dụng Hive TypeAdapter (typeId: 0) để lưu trữ offline.
+@HiveType(typeId: 0)
+class Word extends HiveObject {
   /// ID duy nhất của từ (UUID hoặc Firestore document ID)
+  @HiveField(0)
   final String id;
 
   /// Chữ Hán (ví dụ: 你好, 中文, 学习)
+  @HiveField(1)
   final String hanzi;
 
   /// Phiên âm Pinyin với dấu thanh (ví dụ: nǐ hǎo, zhōng wén)
+  @HiveField(2)
   final String pinyin;
 
   /// Nghĩa tiếng Việt của từ
+  @HiveField(3)
   final String meaning;
 
   /// Câu ví dụ sử dụng từ trong ngữ cảnh thực tế
+  @HiveField(4)
   final String example;
 
   /// Phiên âm Pinyin của câu ví dụ
+  @HiveField(5)
   final String examplePinyin;
 
   /// Cấp độ HSK (1-6, hoặc 0 nếu chưa phân loại)
+  @HiveField(6)
   final int hskLevel;
 
   /// Khởi tạo một đối tượng Word với đầy đủ thông tin từ vựng.
-  const Word({
+  Word({
     required this.id,
     required this.hanzi,
     required this.pinyin,
