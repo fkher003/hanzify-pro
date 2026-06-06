@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,81 +6,75 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../shared/widgets/app_buttons.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../providers/home_provider.dart';
 
-/// Màn hình Trang chủ chính của HanzifyPro.
-/// Thiết kế theo Stitch spec:
-/// - Header với lời chào + gradient
-/// - Streak card (ngày học liên tiếp)
-/// - Tiến độ HSK4
-/// - Nút "Tiếp tục học"
-/// - Quick stats row
-/// - Từ hôm nay (horizontal scroll)
+// ─── Màu sắc cục bộ cho biểu đồ ─────────────────────────────────────────────
+const _neonBlue = Color(0xFF00D4FF);
+const _orangeAccent = Color(0xFFFF6B35);
+const _chartGray = Color(0xFF2A2A3E);
+
+/// Màn hình Trang chủ Dashboard của HanzifyPro.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Lấy thông tin user từ provider
     final user = ref.watch(currentUserProvider);
-    final displayName = user?.displayName ?? user?.email?.split('@').first ?? 'Học viên';
+    final displayName =
+        user?.displayName ?? user?.email?.split('@').first ?? 'Học viên';
+    final stats = ref.watch(homeStatsProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // ── SliverAppBar ẩn (không cần title, header tự thiết kế) ────────
-          const SliverToBoxAdapter(child: SizedBox.shrink()),
-
-          // ── Toàn bộ nội dung trong một Sliver ────────────────────────────
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── 1. Header / Greeting ─────────────────────────────────
-                _buildHeader(displayName),
+                _buildHeader(displayName, stats.streakDays),
 
-                // ── 2. Streak Card ───────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                  child: _buildStreakCard(),
-                ),
+                const SizedBox(height: 24),
 
-                const SizedBox(height: 16),
-
-                // ── 3. HSK4 Progress Card ────────────────────────────────
+                // ── 2. Donut Chart (HSK4 Progress) ────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _buildProgressCard(),
+                  child: _buildDonutSection(stats),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
+
+                // ── 3. BarChart (Hoạt động 7 ngày) ───────────────────────
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildBarChartSection(stats.weeklyActivity),
+                ),
+
+                const SizedBox(height: 24),
 
                 // ── 4. Nút "Tiếp tục học" ────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: AppPrimaryButton(
                     label: 'Tiếp tục học  →',
-                    onPressed: () {
-                      // TODO: Điều hướng đến Flashcard tab ở sprint sau
-                      context.go('/flashcard');
-                    },
+                    onPressed: () => context.go('/flashcard'),
                   ),
                 ),
 
                 const SizedBox(height: 24),
 
-                // ── 5. Quick Stats Row ───────────────────────────────────
+                // ── 5. 2 Card thống kê dưới cùng ─────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _buildQuickStats(),
+                  child: _buildBottomStats(stats),
                 ),
 
-                const SizedBox(height: 24),
-
                 // ── 6. Từ hôm nay ────────────────────────────────────────
+                const SizedBox(height: 24),
                 _buildTodayWordsSection(),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -88,11 +83,9 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  // ─── 1. Header Greeting ───────────────────────────────────────────────────
+  // ─── 1. Header ─────────────────────────────────────────────────────────────
 
-  /// Header với gradient nền và lời chào theo giờ trong ngày.
-  Widget _buildHeader(String displayName) {
-    // Lấy lời chào phù hợp theo giờ
+  Widget _buildHeader(String displayName, int streakDays) {
     final hour = DateTime.now().hour;
     final greeting = hour < 12
         ? 'Chào buổi sáng'
@@ -110,14 +103,13 @@ class HomeScreen extends ConsumerWidget {
           colors: [Color(0xFF0F0F0F), Color(0xFF1A1A2E)],
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          // Dòng chào + emoji
-          Row(
-            children: [
-              Expanded(
-                child: Text(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   '$greeting, $displayName! 👋',
                   style: const TextStyle(
                     fontSize: 22,
@@ -125,234 +117,152 @@ class HomeScreen extends ConsumerWidget {
                     color: AppColors.textPrimary,
                   ),
                 ),
-              ),
-              // Logo Hán tự nhỏ
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.chineseRed.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  '汉字',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.chineseRed,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          // Sub-text
-          const Text(
-            'Hôm nay học gì nhỉ?',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── 2. Streak Card ───────────────────────────────────────────────────────
-
-  /// Thẻ đếm chuỗi ngày học liên tiếp.
-  /// Gradient xanh đậm, icon lửa, số ngày to.
-  Widget _buildStreakCard() {
-    // TODO: Lấy streak thực từ Firestore/Hive ở sprint sau
-    const streakDays = 7;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1A56A4), Color(0xFF0D47A1)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        // Viền glow nhẹ
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Cột thông tin streak
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Label trên
+                const SizedBox(height: 6),
                 const Text(
-                  'Chuỗi học liên tiếp',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xCCFFFFFF),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Số ngày to
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text(
-                      '$streakDays',
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'ngày',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Color(0xCCFFFFFF),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Lời động viên
-                const Text(
-                  'Tuyệt vời! Giữ vững nhé 💪',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xB3FFFFFF),
-                  ),
+                  'Hôm nay học gì nhỉ?',
+                  style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
                 ),
               ],
             ),
           ),
-
-          // Icon lửa bên phải
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Vòng tròn mờ trang trí
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              const Icon(
-                Icons.local_fire_department,
-                size: 48,
-                color: Color(0xFFFF6B35),
-              ),
-            ],
-          ),
+          // Streak badge (đọc từ Hive thực)
+          _StreakBadge(days: streakDays),
         ],
       ),
     );
   }
 
-  // ─── 3. HSK4 Progress Card ────────────────────────────────────────────────
+  // ─── 2. Donut Chart ────────────────────────────────────────────────────────
 
-  /// Thẻ tiến độ HSK4 với thanh progress bar.
-  Widget _buildProgressCard() {
-    // TODO: Lấy tiến độ thực từ Firestore ở sprint sau
-    const totalWords = 600;
-    const learnedWords = 320;
-    const progress = learnedWords / totalWords; // 0.533...
+  Widget _buildDonutSection(HomeStats stats) {
+    // Dữ liệu cố định HSK4: tổng 600 từ
+    const totalHsk4 = 600;
+    final learned = stats.totalWordsLearned.clamp(0, totalHsk4);
+    final remaining = totalHsk4 - learned;
+    final percent = ((learned / totalHsk4) * 100).round();
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border, width: 1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: tiêu đề + badge phần trăm
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Tiêu đề section
+          const Row(
             children: [
-              // Tiêu đề
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Tiến độ HSK 4',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    '$learnedWords / $totalWords từ đã học',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-
-              // Badge phần trăm
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  '53%',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
+              Icon(Icons.track_changes_rounded, size: 18, color: _neonBlue),
+              SizedBox(width: 8),
+              Text(
+                'Mục tiêu HSK 4',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 20),
 
-          const SizedBox(height: 16),
-
-          // Thanh progress bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: AppColors.border,
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Phân chia level phụ (HSK 4 breakdown)
           Row(
             children: [
-              _buildMiniStat('Đã thuộc', '256', AppColors.primary),
-              const SizedBox(width: 16),
-              _buildMiniStat('Cần ôn', '64', const Color(0xFFFF6B35)),
-              const SizedBox(width: 16),
-              _buildMiniStat('Chưa học', '280', AppColors.textSecondary),
+              // ── Donut Chart ──────────────────────────────────────────────
+              SizedBox(
+                width: 130,
+                height: 130,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    PieChart(
+                      PieChartData(
+                        sectionsSpace: 3,
+                        centerSpaceRadius: 42,
+                        startDegreeOffset: -90,
+                        sections: [
+                          // Phần đã học — xanh neon
+                          PieChartSectionData(
+                            value: learned.toDouble(),
+                            color: _neonBlue,
+                            radius: 18,
+                            showTitle: false,
+                          ),
+                          // Phần chưa học — xám tối
+                          PieChartSectionData(
+                            value: remaining.toDouble(),
+                            color: _chartGray,
+                            radius: 16,
+                            showTitle: false,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Text giữa vòng donut
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$percent%',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const Text(
+                          'HSK 4',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 20),
+
+              // ── Chú thích bên phải ───────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _LegendItem(
+                      color: _neonBlue,
+                      label: 'Đã học',
+                      value: '$learned từ',
+                    ),
+                    const SizedBox(height: 10),
+                    _LegendItem(
+                      color: _chartGray,
+                      label: 'Còn lại',
+                      value: '$remaining từ',
+                    ),
+                    const SizedBox(height: 10),
+                    _LegendItem(
+                      color: _orangeAccent,
+                      label: 'Tổng mục tiêu',
+                      value: '$totalHsk4 từ',
+                    ),
+                    const SizedBox(height: 14),
+                    // Thanh progress phụ
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: learned / totalHsk4,
+                        minHeight: 6,
+                        backgroundColor: _chartGray,
+                        valueColor: const AlwaysStoppedAnimation<Color>(_neonBlue),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
@@ -360,100 +270,164 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Mini stat item bên trong card tiến độ
-  Widget _buildMiniStat(String label, String value, Color color) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
+  // ─── 3. Bar Chart ──────────────────────────────────────────────────────────
+
+  Widget _buildBarChartSection(List<double> weeklyData) {
+    final today = DateTime.now().weekday - 1; // 0=T2, 6=CN
+    const labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 18, color: _orangeAccent),
+              SizedBox(width: 8),
+              Text(
+                'Hoạt động tuần này',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '$value $label',
-          style: TextStyle(fontSize: 12, color: color),
-        ),
-      ],
-    );
-  }
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 140,
+            child: BarChart(
+              BarChartData(
+                // ── Tắt viền & lưới ────────────────────────────────────────
+                borderData: FlBorderData(show: false),
+                gridData: const FlGridData(show: false),
 
-  // ─── 5. Quick Stats Row ───────────────────────────────────────────────────
+                // ── Trục ───────────────────────────────────────────────────
+                titlesData: FlTitlesData(
+                  // Chỉ giữ nhãn dưới (T2-CN)
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 28,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= labels.length) {
+                          return const SizedBox.shrink();
+                        }
+                        final isToday = idx == today;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            labels[idx],
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isToday
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isToday
+                                  ? _orangeAccent
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
 
-  /// Hàng 3 thẻ thống kê nhanh: Từ đã học, Độ chính xác, Thời gian hôm nay.
-  Widget _buildQuickStats() {
-    return Row(
-      children: [
-        _buildStatCard(
-          icon: '📚',
-          value: '120',
-          label: 'Từ đã học',
-        ),
-        const SizedBox(width: 12),
-        _buildStatCard(
-          icon: '⭐',
-          value: '85%',
-          label: 'Chính xác',
-        ),
-        const SizedBox(width: 12),
-        _buildStatCard(
-          icon: '⏱️',
-          value: '24p',
-          label: 'Hôm nay',
-        ),
-      ],
-    );
-  }
+                barGroups: List.generate(7, (i) {
+                  final isToday = i == today;
+                  final value = weeklyData[i];
+                  return BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: value == 0 ? 0.5 : value, // Giá trị tối thiểu 0.5 để cột rỗng vẫn thấy
+                        width: 16,
+                        borderRadius: BorderRadius.circular(6),
+                        // ── Gradient: hôm nay = cam, còn lại = xám/xanh ───
+                        gradient: isToday
+                            ? const LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [Color(0xFFFF6B35), Color(0xFFFFAA5C)],
+                              )
+                            : LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: value > 0
+                                    ? [
+                                        const Color(0xFF1A56A4),
+                                        const Color(0xFF2E7DE9),
+                                      ]
+                                    : [_chartGray, _chartGray],
+                              ),
+                      ),
+                    ],
+                  );
+                }),
 
-  /// Thẻ thống kê nhỏ
-  Widget _buildStatCard({
-    required String icon,
-    required String value,
-    required String label,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border, width: 1),
-        ),
-        child: Column(
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                maxY: (weeklyData.reduce((a, b) => a > b ? a : b) + 4).clamp(10, 20),
+                barTouchData: BarTouchData(enabled: false),
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // ─── 6. Today's Words Section ─────────────────────────────────────────────
+  // ─── 5. Bottom Stats Cards ─────────────────────────────────────────────────
 
-  /// Section "Từ hôm nay" với horizontal scroll cards.
+  Widget _buildBottomStats(HomeStats stats) {
+    final retentionPct = (stats.retentionRate * 100).round();
+
+    return Row(
+      children: [
+        // Card 1: Từ vựng đã học
+        Expanded(
+          child: _StatsCard(
+            icon: Icons.book_rounded,
+            iconColor: _neonBlue,
+            value: '${stats.totalWordsLearned}',
+            label: 'Từ vựng đã học',
+            subtitle: 'trong Hive offline',
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Card 2: Tỷ lệ nhớ
+        Expanded(
+          child: _StatsCard(
+            icon: Icons.psychology_rounded,
+            iconColor: _orangeAccent,
+            value: '$retentionPct%',
+            label: 'Tỷ lệ nhớ',
+            subtitle: 'đã thuộc ≥ 2 lần',
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── 6. Today's Words ─────────────────────────────────────────────────────
+
   Widget _buildTodayWordsSection() {
-    // Dữ liệu mẫu — sẽ thay bằng dữ liệu từ Hive/Firestore ở sprint sau
     final sampleWords = [
       {'char': '学习', 'pinyin': 'xuéxí', 'meaning': 'học tập'},
       {'char': '语言', 'pinyin': 'yǔyán', 'meaning': 'ngôn ngữ'},
@@ -465,7 +439,6 @@ class HomeScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header của section
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
@@ -484,32 +457,22 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    '5 từ mới cần ôn',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
+                    '5 từ cần ôn tập',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                   ),
                 ],
               ),
-              // Nút "Xem tất cả"
               TextButton(
                 onPressed: () {},
                 child: const Text(
                   'Xem tất cả',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.primary,
-                  ),
+                  style: TextStyle(fontSize: 13, color: AppColors.primary),
                 ),
               ),
             ],
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Horizontal scrolling word cards
         SizedBox(
           height: 120,
           child: ListView.builder(
@@ -518,7 +481,7 @@ class HomeScreen extends ConsumerWidget {
             itemCount: sampleWords.length,
             itemBuilder: (context, index) {
               final word = sampleWords[index];
-              return _buildWordCard(
+              return _WordCard(
                 char: word['char']!,
                 pinyin: word['pinyin']!,
                 meaning: word['meaning']!,
@@ -529,13 +492,151 @@ class HomeScreen extends ConsumerWidget {
       ],
     );
   }
+}
 
-  /// Thẻ từ vựng trong horizontal scroll
-  Widget _buildWordCard({
-    required String char,
-    required String pinyin,
-    required String meaning,
-  }) {
+// ─── Sub-widgets ──────────────────────────────────────────────────────────────
+
+/// Badge streak ở góc phải header.
+class _StreakBadge extends StatelessWidget {
+  final int days;
+  const _StreakBadge({required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF6B35).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFF6B35).withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.local_fire_department, size: 18, color: Color(0xFFFF6B35)),
+          const SizedBox(width: 4),
+          Text(
+            '$days ngày',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFFF6B35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Legend item cho Donut chart.
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  final String value;
+  const _LegendItem({required this.color, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+        ),
+      ],
+    );
+  }
+}
+
+/// Card thống kê lớn dưới cùng.
+class _StatsCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String value;
+  final String label;
+  final String subtitle;
+
+  const _StatsCard({
+    required this.icon,
+    required this.iconColor,
+    required this.value,
+    required this.label,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Thẻ từ vựng trong horizontal scroll.
+class _WordCard extends StatelessWidget {
+  final String char;
+  final String pinyin;
+  final String meaning;
+
+  const _WordCard({
+    required this.char,
+    required this.pinyin,
+    required this.meaning,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: 110,
       margin: const EdgeInsets.only(right: 12),
@@ -543,12 +644,11 @@ class HomeScreen extends ConsumerWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 1),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Chữ Hán
           Text(
             char,
             style: const TextStyle(
@@ -558,22 +658,14 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 6),
-          // Pinyin
           Text(
             pinyin,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 4),
-          // Nghĩa tiếng Việt
           Text(
             meaning,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFF6B7280),
-            ),
+            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
