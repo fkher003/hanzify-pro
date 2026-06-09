@@ -30,7 +30,7 @@ final chatProvider = NotifierProvider.family<ChatNotifier, ChatState, ChatScenar
   return ChatNotifier();
 });
 
-/// Quản lý danh sách tin nhắn và tương tác với Gemini.
+/// Quản lý danh sách tin nhắn và tương tác với Gemini AI.
 class ChatNotifier extends FamilyNotifier<ChatState, ChatScenario> {
   GeminiService get _gemini => ref.read(geminiServiceProvider);
 

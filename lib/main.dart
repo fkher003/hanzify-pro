@@ -17,7 +17,7 @@ void main() async {
   await HiveService.initialize();
 
   // Nạp dữ liệu mẫu nếu box từ vựng còn rỗng (lần đầu cài app)
-  await HiveService().seedSampleWordsIfEmpty();
+  await HiveService().seedDataIfEmpty();
 
   runApp(
     const ProviderScope(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/chat_models.dart';
 
 // Đọc API Key từ arguments khi build: --dart-define=GEMINI_KEY=xxxx
@@ -19,20 +20,18 @@ class GeminiService {
       throw Exception('Không tìm thấy GEMINI_KEY. Hãy chạy app với --dart-define=GEMINI_KEY=...');
     }
 
-    // Khởi tạo model Gemini 1.5 Flash
+    // Khởi tạo model Gemini Pro (1.0)
     final model = GenerativeModel(
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-pro',
       apiKey: _apiKey,
-      systemInstruction: Content.system(scenario.systemInstruction),
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-      ),
     );
 
-    // Tạo session mới và bắt đầu với lịch sử rỗng.
-    // Lịch sử thật sẽ được quản lý bởi Riverpod provider và đồng bộ sang session này
-    // thông qua sendMessage.
-    _chatSession = model.startChat(history: []);
+    // Truyền system instruction thông qua lịch sử (history)
+    // vì gemini-pro không hỗ trợ tham số systemInstruction
+    _chatSession = model.startChat(history: [
+      Content.text('${scenario.systemInstruction}\n\nIMPORTANT: You must respond in ONLY valid JSON format.'),
+      Content.model([TextPart('Đã hiểu. Tôi sẽ chỉ trả lời bằng JSON.')]),
+    ]);
   }
 
   /// Gửi tin nhắn lên Gemini và nhận về response đã parse.
@@ -49,8 +48,21 @@ class GeminiService {
         throw Exception('Phản hồi rỗng từ Gemini.');
       }
 
-      // Parse JSON từ Gemini
-      final data = jsonDecode(responseText) as Map<String, dynamic>;
+      // Parse JSON từ Gemini. Lọc bỏ markdown code block nếu có.
+      String jsonStr = responseText;
+      if (jsonStr.startsWith('```json')) {
+        jsonStr = jsonStr.substring(7);
+        if (jsonStr.endsWith('```')) {
+          jsonStr = jsonStr.substring(0, jsonStr.length - 3);
+        }
+      } else if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.substring(3);
+        if (jsonStr.endsWith('```')) {
+          jsonStr = jsonStr.substring(0, jsonStr.length - 3);
+        }
+      }
+      
+      final data = jsonDecode(jsonStr.trim()) as Map<String, dynamic>;
 
       return ChatMessage(
         id: DateTime.now().millisecondsSinceEpoch.toString(),

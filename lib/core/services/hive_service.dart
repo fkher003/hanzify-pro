@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -85,67 +88,44 @@ class HiveService {
     await _wordBox.putAll(map);
   }
 
-  /// Nạp dữ liệu mẫu (seed) nếu box đang rỗng.
-  /// Dữ liệu mẫu này sẽ được thay bằng dữ liệu Firestore ở giai đoạn sau.
-  Future<void> seedSampleWordsIfEmpty() async {
+  /// Nạp dữ liệu từ file JSON offline nếu box đang rỗng.
+  Future<void> seedDataIfEmpty() async {
     if (_wordBox.isNotEmpty) return;
 
-    final sampleWords = [
-      Word(
-        id: 'w1',
-        hanzi: '学习',
-        pinyin: 'xuéxí',
-        meaning: 'học tập, nghiên cứu',
-        example: '我在学习中文。',
-        examplePinyin: 'Wǒ zài xuéxí zhōngwén.',
-        hskLevel: 1,
-      ),
-      Word(
-        id: 'w2',
-        hanzi: '语言',
-        pinyin: 'yǔyán',
-        meaning: 'ngôn ngữ',
-        example: '语言是沟通的工具。',
-        examplePinyin: 'Yǔyán shì gōutōng de gōngjù.',
-        hskLevel: 2,
-      ),
-      Word(
-        id: 'w3',
-        hanzi: '汉字',
-        pinyin: 'hànzì',
-        meaning: 'chữ Hán',
-        example: '写汉字很难。',
-        examplePinyin: 'Xiě hànzì hěn nán.',
-        hskLevel: 1,
-      ),
-      Word(
-        id: 'w4',
-        hanzi: '练习',
-        pinyin: 'liànxí',
-        meaning: 'luyện tập',
-        example: '每天练习很重要。',
-        examplePinyin: 'Měitiān liànxí hěn zhòngyào.',
-        hskLevel: 2,
-      ),
-      Word(
-        id: 'w5',
-        hanzi: '文化',
-        pinyin: 'wénhuà',
-        meaning: 'văn hoá',
-        example: '中国文化很丰富。',
-        examplePinyin: 'Zhōngguó wénhuà hěn fēngfù.',
-        hskLevel: 2,
-      ),
-    ];
+    try {
+      // Đọc file JSON từ assets
+      final jsonString = await rootBundle.loadString('assets/hsk4_vocab.json');
+      final List<dynamic> jsonList = jsonDecode(jsonString);
 
-    await saveWords(sampleWords);
+      // Parse JSON sang List<Word>
+      final List<Word> wordsToSeed = jsonList.map((json) => Word.fromMap(json as Map<String, dynamic>)).toList();
 
-    // Tạo FlashCard tương ứng cho mỗi từ nếu chưa có
-    for (final word in sampleWords) {
-      if (!_flashcardBox.containsKey(word.id)) {
-        await _flashcardBox.put(word.id, FlashCard.newCard(wordId: word.id));
+      // Lưu vào Hive box
+      await saveWords(wordsToSeed);
+
+      // Tạo FlashCard tương ứng cho mỗi từ (chưa từng học)
+      for (final word in wordsToSeed) {
+        if (!_flashcardBox.containsKey(word.id)) {
+          await _flashcardBox.put(word.id, FlashCard.newCard(wordId: word.id));
+        }
       }
+    } catch (e) {
+      debugPrint('Lỗi khi seed dữ liệu: $e');
     }
+  }
+
+  // ─── Reset / Clear Operations ────────────────────────────────────────────
+
+  /// Xóa toàn bộ tiến trình học tập (FlashCard và Word) rồi nạp lại từ JSON.
+  /// Dùng khi người dùng muốn bắt đầu từ đầu.
+  Future<void> clearAllProgressAndReseed() async {
+    // Xóa toàn bộ dữ liệu trong 3 box
+    await _flashcardBox.clear();
+    await _wordBox.clear();
+    await _settingsBox.clear();
+
+    // Nạp lại 100 từ vựng mặc định từ file JSON
+    await seedDataIfEmpty();
   }
 
   // ─── FlashCard Operations ─────────────────────────────────────────────────
