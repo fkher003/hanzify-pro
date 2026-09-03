@@ -20,18 +20,18 @@ class GeminiService {
       throw Exception('Không tìm thấy GEMINI_KEY. Hãy chạy app với --dart-define=GEMINI_KEY=...');
     }
 
-    // Khởi tạo model Gemini Pro (1.0)
+    // Khởi tạo model Gemini 1.5 Flash
     final model = GenerativeModel(
-      model: 'gemini-pro',
+      model: 'gemini-1.5-flash',
       apiKey: _apiKey,
+      systemInstruction: Content.system(scenario.systemInstruction),
+      generationConfig: GenerationConfig(
+        responseMimeType: 'application/json',
+      ),
     );
 
-    // Truyền system instruction thông qua lịch sử (history)
-    // vì gemini-pro không hỗ trợ tham số systemInstruction
-    _chatSession = model.startChat(history: [
-      Content.text('${scenario.systemInstruction}\n\nIMPORTANT: You must respond in ONLY valid JSON format.'),
-      Content.model([TextPart('Đã hiểu. Tôi sẽ chỉ trả lời bằng JSON.')]),
-    ]);
+    // Tạo session mới và bắt đầu với lịch sử rỗng.
+    _chatSession = model.startChat(history: []);
   }
 
   /// Gửi tin nhắn lên Gemini và nhận về response đã parse.
